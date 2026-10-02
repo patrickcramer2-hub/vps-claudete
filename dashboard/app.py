@@ -3,6 +3,15 @@ from collections import Counter, defaultdict
 import calendar, csv, datetime, io, os, time, zoneinfo, threading, urllib.request, urllib.parse, urllib.error, json, re, sqlite3
 import psycopg2, psycopg2.extras
 
+# gspread é opcional — usado só pelo endpoint de sync Sheets.
+# Não derruba o app se não estiver instalado.
+try:
+    import gspread as _gspread
+    from google.oauth2.service_account import Credentials as _GCreds
+    _GSPREAD_OK = True
+except ImportError:
+    _GSPREAD_OK = False
+
 app = Flask(__name__)
 
 BRT = zoneinfo.ZoneInfo("America/Sao_Paulo")
@@ -3612,6 +3621,97 @@ def api_sefas_lead_update(lead_id):
     return jsonify({"status": "ok", "atualizado": lead_id})
 
 
+# ── Google Sheets sync ────────────────────────────────────────────────────
+_SEFAS_SHEET_ID  = os.environ.get("SEFAS_SPREADSHEET_ID",
+                                   "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw")
+_SEFAS_SHEET_TAB = "SEFAS_OUTBOUND"
+_SHEETS_SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
+_SHEET_HEADER    = ["Status", "Ação Envio", "Variação", "Primeiro Nome",
+                    "Telefone", "Origem", "Plano Indicado", "Data Envio", "remoteJid"]
+
+
+def _sheets_client():
+    if not _GSPREAD_OK:
+        raise RuntimeError("gspread não instalado — pip install gspread google-auth")
+    sa_env = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not sa_env:
+        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON não definido no ambiente")
+    if sa_env.strip().startswith("{"):
+        creds = _GCreds.from_service_account_info(json.loads(sa_env), scopes=_SHEETS_SCOPES)
+    else:
+        creds = _GCreds.from_service_account_file(sa_env, scopes=_SHEETS_SCOPES)
+    return _gspread.authorize(creds)
+
+
+@app.route("/api/sefas/sheets/sync", methods=["POST"])
+def api_sefas_sheets_sync():
+    """Sincroniza leads pendentes do PostgreSQL → Google Sheets (SEFAS_OUTBOUND).
+    Apenas insere novos; nunca sobrescreve linhas existentes."""
+    try:
+        gc = _sheets_client()
+    except RuntimeError as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 503
+
+    try:
+        conn = pg_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT primeiro_nome, telefone, origem, variacao,
+                   COALESCE(plano_indicado, 'a_confirmar') AS plano_indicado
+            FROM leads WHERE client_id = %s AND status = 'pendente'
+            ORDER BY criado_em
+        """, (_SEFAS_CLIENT_ID,))
+        pg_leads = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": f"PostgreSQL: {e}"}), 500
+
+    try:
+        sh = gc.open_by_key(_SEFAS_SHEET_ID)
+        try:
+            ws = sh.worksheet(_SEFAS_SHEET_TAB)
+        except _gspread.WorksheetNotFound:
+            ws = sh.add_worksheet(_SEFAS_SHEET_TAB, rows=5000, cols=len(_SHEET_HEADER))
+            ws.append_row(_SHEET_HEADER)
+        existing = {str(r.get("Telefone", "")).strip()
+                    for r in ws.get_all_records()}
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": f"Google Sheets: {e}"}), 500
+
+    rows_novos, ignorados = [], 0
+    for lead in pg_leads:
+        tel = str(lead["telefone"]).strip()
+        if tel in existing:
+            ignorados += 1
+            continue
+        rows_novos.append([
+            "pendente", "SIM",
+            lead["variacao"] or "S1",
+            lead["primeiro_nome"] or "",
+            tel,
+            lead["origem"] or "lista-sefas",
+            lead["plano_indicado"] or "a_confirmar",
+            "", "",
+        ])
+        existing.add(tel)
+
+    if rows_novos:
+        try:
+            ws.append_rows(rows_novos, value_input_option="USER_ENTERED")
+        except Exception as e:
+            return jsonify({"status": "erro",
+                            "mensagem": f"append_rows falhou: {e}",
+                            "inseridos_antes_do_erro": len(rows_novos)}), 500
+
+    return jsonify({
+        "status": "ok",
+        "inseridos": len(rows_novos),
+        "ignorados_ja_existiam": ignorados,
+        "total_pg": len(pg_leads),
+        "atualizado_em": datetime.datetime.now(BRT).strftime("%d/%m %H:%M"),
+    })
+
+
 @app.route("/static/<path:filename>")
 def static_files(filename):
     return send_from_directory("static", filename)
@@ -3627,6 +3727,20 @@ def vendas():
 
 @app.route("/handoffs")
 def handoffs():
+    return send_from_directory(".", "handoffs.html")
+
+
+# ── Aliases /ccn (para URL painel.centrocliniconiteroi.com.br/ccn/...) ──
+@app.route("/ccn")
+def ccn_index():
+    return send_from_directory(".", "dashboard.html")
+
+@app.route("/ccn/vendas")
+def ccn_vendas():
+    return send_from_directory(".", "vendas.html")
+
+@app.route("/ccn/handoffs")
+def ccn_handoffs():
     return send_from_directory(".", "handoffs.html")
 
 
