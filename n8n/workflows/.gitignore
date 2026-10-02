@@ -1,0 +1,2 @@
+# Workflow exports contain live API keys — never commit
+*.json
