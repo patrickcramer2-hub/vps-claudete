@@ -4,7 +4,8 @@
       "Bash(ssh *)",
       "Bash(scp *)",
       "Bash(tailscale *)",
-      "Bash(tailscaled *)"
+      "Bash(tailscaled *)",
+      "Bash(curl *)"
     ]
   }
 }
