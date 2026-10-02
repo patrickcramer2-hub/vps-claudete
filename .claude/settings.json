@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(ssh *)",
-      "Bash(sshpass *)"
+      "Bash(scp *)",
+      "Bash(tailscale *)",
+      "Bash(tailscaled *)"
     ]
   }
 }
