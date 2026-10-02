@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request as flask_request, send_from_directory
 from collections import Counter, defaultdict
-import calendar, datetime, os, time, zoneinfo, threading, urllib.request, urllib.parse, urllib.error, json, re, sqlite3
+import calendar, csv, datetime, io, os, time, zoneinfo, threading, urllib.request, urllib.parse, urllib.error, json, re, sqlite3
 import psycopg2, psycopg2.extras
 
 app = Flask(__name__)
@@ -3351,6 +3351,265 @@ def api_cache_invalidar():
         _api_cache.clear()
     print(f"[cache] invalidado manualmente ({n} chaves removidas)", flush=True)
     return jsonify({"ok": True, "chaves_removidas": n})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MÓDULO SEFAS ASSISTENCIAL — outbound WhatsApp
+#
+# Fontes de dados disponíveis para o dashboard (mapeadas em out/2026):
+#
+# 1. PostgreSQL leads (esta app, via pg_conn()):
+#    - tabela: leads WHERE client_id='sefas'
+#    - campos: status, variacao, enviado_em, respondeu_em, handoff_em,
+#              plano_indicado, origem, campaign_id
+#    - status: pendente|enviado|respondeu|interesse|duvida|recusa|handoff|sem_resposta|fechado
+#
+# 2. Google Sheets (tab SEFAS_OUTBOUND, planilha 11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw):
+#    - espelho operacional lido pelo n8n para controle de envios
+#    - colunas: Status, Ação Envio, Variação, Primeiro Nome, Telefone,
+#               Origem, Plano Indicado, Data Envio, remoteJid
+#
+# 3. Evolution API / evolution_db (via pg_conn()):
+#    - tabela Message JOIN Instance WHERE name='SEFAS-Assistencial'
+#    - disponível: messageTimestamp, fromMe, remoteJid
+#    - ATENÇÃO: instância ainda não criada — aguarda warm-up de 7 dias
+#
+# 4. Chatwoot (via CHATWOOT_BASE + CHATWOOT_API_TOKEN):
+#    - handoffs equipe SEFAS — reutiliza chatwoot_agent_summary()
+#    - métricas: conversations_count, resolved, avg_first_response_time
+#
+# 5. n8n workflow 'SEFAS — OUTBOUND CAMPANHA':
+#    - teto 50/dia, janela horária, anti-ban 30min
+#    - log em 'Historico Outbound' (Sheets) e 'Histórico Recepção'
+#    - A/B test via coluna Variação (S1/S2)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_SEFAS_CLIENT_ID = "sefas"
+
+
+def _sefas_normalizar_tel(raw: str):
+    digits = re.sub(r"\D", "", raw)
+    if digits.startswith("55"):
+        digits = digits[2:]
+    if len(digits) == 11 and digits[2] in "6789":
+        return "55" + digits
+    if len(digits) == 10:
+        return "55" + digits
+    return None
+
+
+@app.route("/sefas")
+def sefas_index():
+    return jsonify({
+        "modulo": "SEFAS Assistencial",
+        "status": "API ativa — dashboard em construção",
+        "endpoints": [
+            "POST /api/sefas/leads/import",
+            "GET  /api/sefas/metrics",
+            "GET  /api/sefas/leads",
+            "PUT  /api/sefas/leads/<id>",
+        ],
+    })
+
+
+@app.route("/api/sefas/leads/import", methods=["POST"])
+def api_sefas_leads_import():
+    """Importa CSV (nome, telefone[, origem]) para tabela leads.
+    Deduplica por (telefone, client_id). Alterna variação S1/S2."""
+    f = flask_request.files.get("file")
+    if not f:
+        return jsonify({"status": "erro", "mensagem": "campo 'file' obrigatório"}), 400
+    origem_padrao = flask_request.form.get("origem", "lista-sefas")
+    campaign_id   = flask_request.form.get("campaign_id", "sefas-2026")
+
+    content = f.read().decode("utf-8-sig", errors="replace")
+    reader  = csv.DictReader(io.StringIO(content))
+    cols    = [c.lower().strip() for c in (reader.fieldnames or [])]
+    if "telefone" not in cols or "nome" not in cols:
+        return jsonify({"status": "erro",
+                        "mensagem": f"CSV precisa de 'nome' e 'telefone'. Encontrado: {cols}"}), 400
+
+    inseridos = invalidos = duplicados_csv = duplicados_db = 0
+    seen_csv, rows_ok = set(), []
+    for row in reader:
+        nome = row.get("nome", "").strip()
+        tel  = _sefas_normalizar_tel(row.get("telefone", ""))
+        orig = row.get("origem", origem_padrao).strip() or origem_padrao
+        if not tel:
+            invalidos += 1
+            continue
+        if tel in seen_csv:
+            duplicados_csv += 1
+            continue
+        seen_csv.add(tel)
+        rows_ok.append((nome, nome.split()[0] if nome else "", tel, orig))
+
+    if not rows_ok:
+        return jsonify({"status": "ok", "inseridos": 0, "invalidos": invalidos,
+                        "duplicados_csv": duplicados_csv, "duplicados_db": 0})
+
+    try:
+        conn = pg_conn()
+        cur  = conn.cursor()
+        cur.execute("SELECT telefone FROM leads WHERE client_id = %s", (_SEFAS_CLIENT_ID,))
+        existing = {r[0] for r in cur.fetchall()}
+
+        for i, (nome, primeiro_nome, tel, orig) in enumerate(rows_ok):
+            if tel in existing:
+                duplicados_db += 1
+                continue
+            variacao = "S1" if i % 2 == 0 else "S2"
+            cur.execute("""
+                INSERT INTO leads
+                    (nome, primeiro_nome, telefone, origem, status, variacao,
+                     client_id, campaign_id)
+                VALUES (%s, %s, %s, %s, 'pendente', %s, %s, %s)
+                ON CONFLICT (telefone, client_id) DO NOTHING
+            """, (nome, primeiro_nome, tel, orig, variacao, _SEFAS_CLIENT_ID, campaign_id))
+            if cur.rowcount:
+                existing.add(tel)
+                inseridos += 1
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+    return jsonify({
+        "status": "ok",
+        "inseridos": inseridos,
+        "invalidos": invalidos,
+        "duplicados_csv": duplicados_csv,
+        "duplicados_db": duplicados_db,
+    })
+
+
+@app.route("/api/sefas/metrics")
+def api_sefas_metrics():
+    """Métricas operacionais da campanha SEFAS — funil + A/B + planos."""
+    try:
+        conn = pg_conn()
+        cur  = conn.cursor()
+
+        cur.execute("SELECT status, COUNT(*) FROM leads WHERE client_id = %s GROUP BY status",
+                    (_SEFAS_CLIENT_ID,))
+        por_status = dict(cur.fetchall())
+
+        cur.execute("SELECT variacao, COUNT(*) FROM leads WHERE client_id = %s GROUP BY variacao",
+                    (_SEFAS_CLIENT_ID,))
+        por_variacao = dict(cur.fetchall())
+
+        cur.execute("""
+            SELECT plano_indicado, COUNT(*) FROM leads
+            WHERE client_id = %s AND plano_indicado IS NOT NULL GROUP BY plano_indicado
+        """, (_SEFAS_CLIENT_ID,))
+        por_plano = dict(cur.fetchall())
+
+        cur.execute("""
+            SELECT DATE(enviado_em AT TIME ZONE 'America/Sao_Paulo'), COUNT(*)
+            FROM leads WHERE client_id = %s AND enviado_em >= NOW() - INTERVAL '30 days'
+            GROUP BY 1 ORDER BY 1
+        """, (_SEFAS_CLIENT_ID,))
+        envios_por_dia = [{"data": str(r[0]), "count": r[1]} for r in cur.fetchall()]
+
+        conn.close()
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+    total      = sum(por_status.values())
+    enviados   = sum(por_status.get(s, 0) for s in
+                     ("enviado", "respondeu", "interesse", "handoff", "fechado", "recusa", "sem_resposta"))
+    responderam = sum(por_status.get(s, 0) for s in ("respondeu", "interesse", "handoff", "fechado"))
+    interesse   = sum(por_status.get(s, 0) for s in ("interesse", "handoff", "fechado"))
+    handoffs    = por_status.get("handoff", 0)
+    fechados    = por_status.get("fechado", 0)
+
+    return jsonify({
+        "status": "ok",
+        "total_leads": total,
+        "por_status": por_status,
+        "funil": {
+            "total":      total,
+            "enviados":   enviados,
+            "responderam": responderam,
+            "interesse":  interesse,
+            "handoffs":   handoffs,
+            "fechados":   fechados,
+            "taxa_resposta_pct":   round(responderam / enviados * 100, 1) if enviados else None,
+            "taxa_interesse_pct":  round(interesse / enviados * 100, 1)   if enviados else None,
+            "taxa_handoff_pct":    round(handoffs / enviados * 100, 1)    if enviados else None,
+            "taxa_fechamento_pct": round(fechados / handoffs * 100, 1)    if handoffs else None,
+        },
+        "variacao_ab": por_variacao,
+        "por_plano": por_plano,
+        "envios_por_dia": envios_por_dia,
+        "atualizado_em": datetime.datetime.now(BRT).strftime("%d/%m %H:%M"),
+    })
+
+
+@app.route("/api/sefas/leads")
+def api_sefas_leads():
+    """Lista leads SEFAS com paginação e filtro por status."""
+    status_f = flask_request.args.get("status")
+    page     = max(int(flask_request.args.get("page", 1)), 1)
+    per_page = min(int(flask_request.args.get("per_page", 50)), 200)
+    offset   = (page - 1) * per_page
+
+    try:
+        conn   = pg_conn()
+        cur    = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        conds  = ["client_id = %s"]
+        params = [_SEFAS_CLIENT_ID]
+        if status_f:
+            conds.append("status = %s")
+            params.append(status_f)
+        where = " AND ".join(conds)
+        cur.execute(f"SELECT COUNT(*) FROM leads WHERE {where}", params)
+        total = cur.fetchone()["count"]
+        cur.execute(
+            f"SELECT id, nome, primeiro_nome, telefone, origem, status, variacao, "
+            f"plano_indicado, campaign_id, criado_em, enviado_em, respondeu_em, handoff_em, notas "
+            f"FROM leads WHERE {where} ORDER BY criado_em DESC LIMIT %s OFFSET %s",
+            params + [per_page, offset],
+        )
+        leads = [dict(r) for r in cur.fetchall()]
+        conn.close()
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+    return jsonify({"status": "ok", "total": total, "page": page,
+                    "per_page": per_page, "leads": leads})
+
+
+@app.route("/api/sefas/leads/<int:lead_id>", methods=["PUT"])
+def api_sefas_lead_update(lead_id):
+    """Atualiza status, plano_indicado ou notas de um lead."""
+    body    = flask_request.get_json(silent=True) or {}
+    allowed = {"status", "plano_indicado", "notas"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        return jsonify({"status": "erro", "mensagem": "nada para atualizar"}), 400
+
+    ts_auto = {"enviado": "enviado_em = NOW()", "respondeu": "respondeu_em = NOW()",
+               "handoff": "handoff_em = NOW()"}
+    set_parts = [f"{k} = %s" for k in updates]
+    if "status" in updates and updates["status"] in ts_auto:
+        set_parts.append(ts_auto[updates["status"]])
+    vals = list(updates.values()) + [_SEFAS_CLIENT_ID, lead_id]
+
+    try:
+        conn = pg_conn()
+        cur  = conn.cursor()
+        cur.execute(f"UPDATE leads SET {', '.join(set_parts)} "
+                    "WHERE client_id = %s AND id = %s", vals)
+        conn.commit()
+        conn.close()
+        if cur.rowcount == 0:
+            return jsonify({"status": "erro", "mensagem": "lead não encontrado"}), 404
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+    return jsonify({"status": "ok", "atualizado": lead_id})
 
 
 @app.route("/static/<path:filename>")
