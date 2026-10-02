@@ -1,408 +1,1410 @@
 {
-  "name": "SEFAS Outbound Campanha",
+  "name": "SEFAS — OUTBOUND CAMPANHA",
   "nodes": [
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, nome, telefone, origem FROM sefas_leads WHERE status = 'pendente' AND DATE(criado_em) = CURRENT_DATE LIMIT 1"
-      },
-      "name": "Buscar Próximo Lead",
-      "type": "n8n-nodes-base.postgres",
-      "position": [240, 300],
-      "id": "node-fetch-lead"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "number": [
+        "rule": {
+          "interval": [
             {
-              "value1": "={{$json[\"id\"]}}",
-              "operation": "isNotEmpty"
+              "field": "minutes",
+              "minutesInterval": 30
             }
           ]
         }
       },
-      "name": "Tem Lead?",
-      "type": "n8n-nodes-base.if",
-      "position": [460, 300],
-      "id": "node-check-lead"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT COUNT(*) as total FROM sefas_leads WHERE status IN ('enviado','respondeu','handoff','recusa') AND telefone = '={{$json[\"telefone\"]}}' AND criado_em > NOW() - INTERVAL '30 days'"
-      },
-      "name": "Já Abordado?",
-      "type": "n8n-nodes-base.postgres",
-      "position": [680, 220],
-      "id": "node-check-dup"
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        1856,
+        -1040
+      ],
+      "id": "40bee5f4-b980-4411-9003-96f8be149cb4",
+      "name": "Trigger SEFAS 30min",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
         "conditions": {
-          "number": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
             {
-              "value1": "={{$json[\"total\"]}}",
-              "value2": 0,
-              "operation": "equal"
+              "id": "0e3618eb-5a36-44cf-a4e7-111493b419a1",
+              "leftValue": "={{ new Date().getHours() }}",
+              "rightValue": 9,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "6c83972d-5c9e-4131-b230-ebe233757c92",
+              "leftValue": "={{ new Date().getHours() }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "name": "Novo Lead?",
       "type": "n8n-nodes-base.if",
-      "position": [900, 220],
-      "id": "node-check-new"
+      "typeVersion": 2.3,
+      "position": [
+        2112,
+        -1040
+      ],
+      "id": "5f9c41c5-1da4-4118-8873-52b67e1adc21",
+      "name": "Bloqueio Horário Envio"
     },
     {
       "parameters": {
-        "amount": 90,
-        "unit": "seconds"
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "SEFAS_OUTBOUND",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "pendente"
+            },
+            {
+              "lookupColumn": "Ação Envio",
+              "lookupValue": "SIM"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
       },
-      "name": "Rate Limiter 90s",
+      "id": "77879300-149b-4fc8-a90c-729f1e4f748e",
+      "name": "Buscar Próximo Lead SEFAS",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2368,
+        -1040
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.Telefone.toString() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "id": "lead-phone-not-empty"
+            },
+            {
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "pendente",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              },
+              "id": "lead-status-pendente"
+            },
+            {
+              "leftValue": "={{ $json['Ação Envio'] }}",
+              "rightValue": "SIM",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              },
+              "id": "lead-acao-envio"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b57d56b0-a746-4574-b6d3-4f4650bdc2d0",
+      "name": "Tem Lead Pendente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2624,
+        -1040
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 35) + 80 }}"
+      },
       "type": "n8n-nodes-base.wait",
-      "position": [1120, 140],
-      "id": "node-rate-limit"
+      "typeVersion": 1.1,
+      "position": [
+        3648,
+        -1040
+      ],
+      "id": "ad6f683d-fe69-4b5f-8850-3d783cb39586",
+      "name": "Intervalo entre envios (Anti-ban)",
+      "webhookId": "e5ee7ef8-43e0-437d-b4d3-df0d0321f597",
+      "disabled": true
     },
     {
       "parameters": {
-        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "=http://177.7.41.57:8080/message/sendText/SEFAS-Assistencial",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{$env.EVOLUTION_API_KEY}}"
+              "value": "C5E05E4209E4-4A8C-9441-672DB9A3AD0A"
             }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "=55{{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}"
-            },
-            {
-              "name": "text",
-              "value": "=Olá, {{$node[\"Buscar Próximo Lead\"].json[\"nome\"]}}! 👋\n\nSou da equipe da CCN (Centro Clínico Niterói) e quero compartilhar algo que pode ser muito útil para você e sua família.\n\nEstamos apresentando aos nossos pacientes uma *assistência familiar* com telemedicina, benefícios para o dia a dia e proteção para situações inesperadas. Os planos começam em R$ 59 por mês.\n\nGostaria de saber mais? 😊"
-            }
-          ]
-        }
-      },
-      "name": "Enviar Abordagem",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1340, 140],
-      "id": "node-send-msg"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE sefas_leads SET status = 'enviado', enviado_em = NOW() WHERE id = {{$node[\"Buscar Próximo Lead\"].json[\"id\"]}}"
-      },
-      "name": "Marcar Enviado",
-      "type": "n8n-nodes-base.postgres",
-      "position": [1560, 140],
-      "id": "node-mark-sent"
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "sefas-resposta",
-        "responseMode": "onReceived",
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"number\": \"{{ (() => { const n = ($json.Telefone || '').toString().replace(/\\\\D/g, ''); if (n.length >= 10) return n.startsWith('55') ? n : '55' + n; throw new Error('Numero invalido: ' + n); })() }}\",\n  \"options\": {\n    \"delay\": 2500,\n    \"presence\": \"composing\"\n  },\n  \"text\": {{ JSON.stringify((() => {\n  const v = $json['Variação'];\n  const nome = $json['Primeiro Nome'] || 'amigo';\n  if (v === 'S1') return 'Oi, ' + nome + '. Aqui é da SEFAS Assistencial. A gente oferece plano de assistência familiar a partir de R$59 por mês — suporte completo pra família no momento mais difícil. Você teria interesse em conhecer?';\n  if (v === 'S2') return 'Oi, ' + nome + ', tudo bem? Você conhece a SEFAS Assistencial? É um plano que cuida da família no momento mais delicado, por um valor bem acessível. Gostaria de saber mais?';\n  throw new Error('Variação não suportada: ' + v);\n})()) }}\n}",
         "options": {}
       },
-      "name": "Webhook Resposta Inbound",
-      "type": "n8n-nodes-base.webhook",
-      "position": [240, 600],
-      "id": "node-webhook-in"
+      "id": "50d718d6-f059-4909-8e17-5af96ad20b5e",
+      "name": "Enviar Mensagem SEFAS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3904,
+        -1040
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "disabled": true,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const texto = ($input.item.json.body?.message?.conversation || '').toLowerCase().trim();\nconst palavrasInteresse = ['sim','quero','gostei','interessante','saber mais','quanto custa','me conta','me interessa','quero saber','qual o plano','valor'];\nconst palavrasRecusa = ['nao','não','obrigado','obrigada','sem interesse','dispenso','cancelar','remover','sair','pare','parar'];\nlet classificacao = 'duvida';\nif(palavrasInteresse.some(p => texto.includes(p))) classificacao = 'interesse';\nif(palavrasRecusa.some(p => texto.includes(p))) classificacao = 'recusa';\nif(!texto || texto.length < 2) classificacao = 'silencio';\nreturn [{ json: { ...($input.item.json), classificacao } }];"
+        "jsCode": "const j = $json;\n\nconst tel =\n  j.pacientePhone ||\n  j.replyTarget ||\n  j.key?.remoteJid?.replace(/\\D/g, '') ||\n  '';\n\nconst campanha =\n  j.campanha_ativa ||\n  j.Campanha ||\n  j.campanha ||\n  'SEFAS_OUTBOUND';\n\nconst variacaoCode = $('Buscar Próximo Lead SEFAS').first().json['Variação'] || '';\nconst primeiroNome = $('Buscar Próximo Lead SEFAS').first().json['Primeiro Nome'] || '';\nconst bloco_produto =\n  $('Buscar Próximo Lead SEFAS').first().json['Bloco Produto'] ||\n  j['Bloco Produto'] || j.bloco_produto ||\n  (campanha.includes('CLUBE') ? 'CLUBE_CCN' : campanha.includes('DERMATO') ? 'DERMATO' : 'CHECK_UP');\n\nconst textosPorVariacao = {\n  // ── CHECK-UP (Dia das Mães 2026) ──\n  'A1': `${primeiroNome}, tudo bem? A CCN completa 6 anos em agosto e os check-ups estão com desconto especial só até o final do mês. Em setembro voltam ao preço normal. Posso te passar as opções?`,\n  'A2': `${primeiroNome}, tudo bem? Passando pra avisar: em agosto os check-ups da CCN estão com condição especial de aniversário. Quem agendar e realizar este mês garante o desconto. Depois disso volta ao valor normal. Quer saber o que está incluso?`,\n  'B1': `${primeiroNome}, tudo bem? Você já foi paciente da CCN e queria te avisar antes que o mês acabe: estamos com desconto especial de aniversário nos check-ups, válido só para quem realiza em agosto. Posso te contar como funciona?`,\n  'B2': `${primeiroNome}, tudo bem? A CCN está com check-ups com desconto de aniversário, mas só até 31 de agosto. Depois volta ao preço cheio. Vale a pena aproveitar agora. Posso te passar as opções?`,\n  'C1': `${primeiroNome}, tudo bem? 💚 Aqui é da equipe da CCN, em Niterói.\\n\\nNeste mês das mães, estamos oferecendo uma opção de check-up para quem quer colocar a saúde em dia com mais tranquilidade.\\n\\nInclui consulta médica, exames e retorno para avaliação dos resultados, tudo com hora marcada.\\n\\nPosso te passar as informações?`,\n  // ── DERMATOLOGIA (Dr. Nikollas) ──\n  'D1': `${primeiroNome}, tudo bem? Aqui e do Centro Clinico Niteroi. Em agosto, mes do nosso aniversario, estamos com condicao especial pra avaliacao preventiva de pele, mapeamento de pintas e sinais, com o dermatologista. Consulta por R$135 (de R$180) via Pix, para quem agenda e comparece esse mes. Vagas nos dias 17, 20, 27 e 31 (nosso aniversario). Voce tem interesse em marcar um horario?`,\n  'D2': `${primeiroNome}, tudo bem? Centro Clinico Niteroi aqui. Voce ja fez uma avaliacao preventiva da pele, com mapeamento de pintas e sinais? Em agosto, mes do nosso aniversario, a consulta de dermatologia sai por R$135 via Pix (normalmente R$180), pra quem agenda e vem esse mes. Vagas nos dias 17, 20, 27 e 31, esse ultimo e o dia exato do nosso aniversario. Quer que eu veja o horario que funciona melhor pra voce?`,\n  // ── CLUBE CCN (até 59 anos) ──\n  'CA': `${primeiroNome}, tudo bem? 👋 Aqui é da CCN, em Niterói.\\n\\nCriamos um clube para quem quer cuidar da saúde de forma inteligente. A ideia é simples: você paga R$47/mês e quanto mais saudável ficar, mais ganha.\\n\\nFicou 6 meses sem precisar de médico? A CCN te dá um check-up completo de R$499, de presente.\\n\\nFaz sentido te contar mais?`,\n  'CB': `${primeiroNome}, tudo bem? 👋 Aqui é da CCN, em Niterói.\\n\\nLançamos um clube de saúde com uma lógica diferente: você paga R$47/mês e as consultas que seriam R$180 ficam em R$90. E ficou 6 meses sem usar? A gente te dá um check-up Intermediário de presente.\\n\\nQuer saber como funciona?`,\n  // ── CLUBE CCN 60+ (60 anos ou mais) ──\n  'SA': `${primeiroNome}, tudo bem? 👋 Aqui é da CCN, em Niterói.\\n\\nCriamos um clube para quem quer cuidar da saúde de forma inteligente. A ideia é simples: você paga R$97/mês e quanto mais saudável ficar, mais ganha.\\n\\nFicou 6 meses sem precisar de médico? A CCN te dá uma consulta de Geriatria e um check-up Essencial (R$299), de presente.\\n\\nFaz sentido te contar mais?`,\n  'SB': `${primeiroNome}, tudo bem? 👋 Aqui é da CCN, em Niterói.\\n\\nLançamos um clube para maiores de 60 anos com uma lógica diferente: você paga R$97/mês e consultas ficam em R$90, Geriatria em R$150. E ficou 6 meses sem usar? A gente te dá uma consulta de Geriatria + check-up Essencial de presente.\\n\\nQuer saber como funciona?`,\n};\n\nconst mensagemAbertura = textosPorVariacao[variacaoCode] || `${primeiroNome}, tudo bem? 💚 Aqui é da equipe da CCN, em Niterói.\\n\\nEstamos avisando alguns contatos sobre uma opção de check-up disponível neste mês, com consulta médica, exames e retorno para avaliação dos resultados.\\n\\nÉ tudo com hora marcada, pensado para facilitar o cuidado preventivo.\\n\\nPosso te contar mais?`;\n\nconst texto = j.resposta || j.modelText || j.text || '';\n\nconst especialidade = j.especialidade || (campanha.includes('DERMATO') ? 'dermatologia' : 'check-up');\nconst medico = j.medico || (campanha.includes('DERMATO') ? 'Dr. Nikollas Munhoz Andrade' : '');\n\nlet status_lead = 'em_conversa';\nif (texto.includes('[AGENDADO:')) {\n  status_lead = 'agendado';\n} else if (texto.toLowerCase().includes('não') || texto.toLowerCase().includes('depois')) {\n  status_lead = 'recusou';\n}\n\nconst historicoAnterior = j.historico_conversa || '';\nlet historico = '';\n\nif (!historicoAnterior && mensagemAbertura && !texto) {\n  historico = 'claudete:: ' + mensagemAbertura;\n} else if (!historicoAnterior && mensagemAbertura && texto) {\n  historico = 'claudete:: ' + mensagemAbertura + ' ||| claudete:: ' + texto;\n} else if (historicoAnterior && texto) {\n  historico = historicoAnterior + ' ||| claudete:: ' + texto;\n} else if (historicoAnterior) {\n  historico = historicoAnterior;\n} else {\n  historico = texto ? 'claudete:: ' + texto : '';\n}\n\nreturn [{\n  json: {\n    chave_demanda: tel + '_' + campanha,\n    telefone_limpo: tel,\n    paciente_nome: j.pacienteNome || j.pushName || primeiroNome,\n    historico_conversa: historico,\n    ultima_mensagem: 'claudete:: ' + mensagemAbertura,\n    ultima_interacao_ts: new Date().toISOString(),\n    ultimo_numero_origem: '552120423575',\n    canal: 'whatsapp',\n    responsavel: 'claudete',\n    contexto_ativo: 'outbound',\n    origem_demanda: 'outbound',\n    status_conversa: 'ativa',\n    campanha_ativa: campanha,\n    variacao_mensagem: variacaoCode,\n    bloco_produto,\n    especialidade,\n    medico,\n    status_lead,\n    flag_humano: 'NAO',\n    handoff: 'NAO',\n    flag_teste: 'SIM',\n    json_valido: 'SIM'\n  }\n}];"
       },
-      "name": "Classificar Resposta",
       "type": "n8n-nodes-base.code",
-      "position": [460, 600],
-      "id": "node-classify"
+      "typeVersion": 2,
+      "position": [
+        4160,
+        -1040
+      ],
+      "id": "86cc6a7b-d4af-4190-b321-40e6d7662dcd",
+      "name": "Preparar Registro Histórico SEFAS"
     },
     {
       "parameters": {
-        "rules": {
-          "rules": [
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Historico Outbound",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "remoteJid": "={{ $('Enviar Mensagem SEFAS').item.json.key.remoteJid }}",
+            "telefone_limpo": "={{ $json.telefone_limpo }}",
+            "contexto_ativo": "outbound",
+            "origem_demanda": "={{ $json.campanha_ativa }}",
+            "status_conversa": "ativa",
+            "campanha_ativa": "={{ $json.campanha_ativa }}",
+            "variacao_mensagem": "={{ $('Buscar Próximo Lead SEFAS').first().json['Variação'] }}",
+            "responsavel": "outbound",
+            "paciente_nome": "={{ $json.paciente_nome }}",
+            "ultima_mensagem": "={{ $json.mensagem_abertura || $json.ultima_mensagem }}\"",
+            "ultima_interacao_ts": "={{ $json.ultima_interacao_ts }}",
+            "canal": "outbound",
+            "chave_demanda": "={{ $json.chave_demanda }}",
+            "historico_conversa": "={{ $json.historico_conversa }}",
+            "bloco_produto": "={{ $json.bloco_produto }}"
+          },
+          "matchingColumns": [
+            "chave_demanda"
+          ],
+          "schema": [
             {
-              "value2": "interesse",
-              "outputKey": "interesse"
+              "id": "telefone_limpo",
+              "displayName": "telefone_limpo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             },
             {
-              "value2": "recusa",
-              "outputKey": "recusa"
+              "id": "paciente_nome",
+              "displayName": "paciente_nome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             },
             {
-              "value2": "silencio",
-              "outputKey": "silencio"
+              "id": "campanha_ativa",
+              "displayName": "campanha_ativa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "variacao_mensagem",
+              "displayName": "variacao_mensagem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "canal",
+              "displayName": "canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "historico_conversa",
+              "displayName": "historico_conversa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado_conversa",
+              "displayName": "estado_conversa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "handoff",
+              "displayName": "handoff",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "responsavel",
+              "displayName": "responsavel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "data_resposta",
+              "displayName": "data_resposta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data_agendamento",
+              "displayName": "data_agendamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hora_agendamento",
+              "displayName": "hora_agendamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "medico",
+              "displayName": "medico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "especialidade",
+              "displayName": "especialidade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quark_agendamento_id",
+              "displayName": "quark_agendamento_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sucesso_agendamento",
+              "displayName": "sucesso_agendamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ultima_interacao_ts",
+              "displayName": "ultima_interacao_ts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "chave_demanda",
+              "displayName": "chave_demanda",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "remoteJid",
+              "displayName": "remoteJid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_conversa",
+              "displayName": "status_conversa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ultima_mensagem",
+              "displayName": "ultima_mensagem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "respondeu",
+              "displayName": "respondeu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "mariana_assumiu",
+              "displayName": "mariana_assumiu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pending_msg_id",
+              "displayName": "pending_msg_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "agendar",
+              "displayName": "agendar",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cpf",
+              "displayName": "cpf",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "paciente_id_quark",
+              "displayName": "paciente_id_quark",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "origem_demanda",
+              "displayName": "origem_demanda",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contexto_ativo",
+              "displayName": "contexto_ativo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bloco_produto",
+              "displayName": "bloco_produto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4416,
+        -1040
+      ],
+      "id": "e84deaaa-a0fb-4cf9-8b3e-0630aa1f4473",
+      "name": "Registrar Outbound no Histórico",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "SEFAS_OUTBOUND",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "enviado",
+            "Data Envio": "={{ new Date().toISOString() }}",
+            "remoteJid": "={{ $('Buscar Próximo Lead SEFAS').first().json.Telefone }}",
+            "Telefone": "={{ $('Buscar Próximo Lead SEFAS').first().json.Telefone }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4672,
+        -1040
+      ],
+      "id": "9cea6aa0-b706-4f00-bbb9-490fcf5e1b5c",
+      "name": "Atualizar Status para Enviado",
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Historico Outbound",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2880,
+        -1040
+      ],
+      "id": "8f8349a2-f279-4a39-bad1-9a7b513689ea",
+      "name": "Ler Histórico Outbound (Teto Diário)",
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // YYYY-MM-DD\n\nlet contagemHoje = 0;\nfor (const r of rows) {\n  if (r.canal !== 'outbound') continue;\n  const ts = r.ultima_interacao_ts;\n  if (!ts) continue;\n  const dataLocal = new Date(new Date(ts).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\n  const tsDia = dataLocal.toLocaleDateString('en-CA');\n  if (tsDia === hoje) contagemHoje++;\n}\n\nconst TETO = 50;\nconst paciente = $('Tem Lead Pendente?').item.json;\n\nreturn [{\n  json: {\n    ...paciente,\n    contagemHoje,\n    teto: TETO,\n    tetoAtingido: contagemHoje >= TETO\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        -1040
+      ],
+      "id": "987d3139-e483-47a6-8a5a-7deb083b2570",
+      "name": "Contar Envios Hoje (Teto 50)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "teto-check",
+              "leftValue": "={{ $json.tetoAtingido }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3392,
+        -1040
+      ],
+      "id": "e7d1abaa-8f0a-445c-9133-a835ebc4d8fd",
+      "name": "Teto Diário Atingido?"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "1o6uMGl4zv0VHBw4_ydRnpg5K2DVR-7csKCLh7GgQpF0",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Histórico Recepção",
+          "mode": "name",
+          "cachedResultName": "Histórico Recepção"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "telefone_limpo",
+              "lookupValue": "={{ $('Buscar Próximo Lead SEFAS').first().json.Telefone }}"
             }
           ]
         },
-        "fallbackOutput": "duvida"
-      },
-      "name": "Roteador",
-      "type": "n8n-nodes-base.switch",
-      "position": [680, 600],
-      "id": "node-router"
-    },
-    {
-      "parameters": {
-        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
-            },
-            {
-              "name": "text",
-              "value": "Que ótimo! 😊 Para te apresentar o plano mais adequado, me conta rapidinho:\n\n1️⃣ O plano seria só para você ou vai incluir dependentes (cônjuge/filhos)?\n2️⃣ Qual a sua faixa de idade aproximada?"
-            }
-          ]
+        "options": {
+          "returnFirstMatch": true
         }
       },
-      "name": "Qualificar Lead",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [900, 480],
-      "id": "node-qualify"
+      "id": "dermato-lookup-hist-recepcao",
+      "name": "Buscar Histórico Recepção (SEFAS)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3904,
+        -784
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
-        "url": "={{$env.CHATWOOT_BASE}}/api/v1/accounts/{{$env.CHATWOOT_ACCOUNT_ID}}/contacts",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "api_access_token",
-              "value": "={{$env.CHATWOOT_API_TOKEN}}"
-            }
-          ]
+        "jsCode": "const existente = $input.first().json || {};\nconst lead = $('Buscar Próximo Lead SEFAS').first().json;\nconst telefone = lead.Telefone;\nconst novaLinha = $('Preparar Registro Histórico SEFAS').first().json.ultima_mensagem || '';\n\nconst estadoExistente = existente.estado_conversa || '';\nconst resetHistorico = estadoExistente === 'ENCERRADO';\nconst historicoBase = (!resetHistorico && existente.historico_conversa) ? existente.historico_conversa + '|||' : '';\n\nreturn [{\n  json: {\n    telefone_limpo: telefone,\n    paciente_nome: (existente.paciente_nome && String(existente.paciente_nome).trim()) ? existente.paciente_nome : (lead['Nome Completo'] || ''),\n    historico_conversa: historicoBase + novaLinha,\n    canal: 'outbound',\n    remoteJid: telefone + '@s.whatsapp.net',\n    estado_conversa: estadoExistente === 'HANDOFF' ? 'HANDOFF' : 'ATIVO',\n    campanha_ativa: 'SEFAS_OUTBOUND',\n    bloco_produto: 'DERMATO',\n  }\n}];"
+      },
+      "id": "dermato-merge-hist-recepcao",
+      "name": "Mesclar Histórico Recepção (SEFAS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1o6uMGl4zv0VHBw4_ydRnpg5K2DVR-7csKCLh7GgQpF0",
+          "mode": "id"
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "name",
-              "value": "={{$node[\"Buscar Próximo Lead\"].json[\"nome\"]}}"
-            },
-            {
-              "name": "phone_number",
-              "value": "=+55{{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}"
-            }
-          ]
-        }
-      },
-      "name": "Criar Contato Chatwoot",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1120, 480],
-      "id": "node-cw-contact"
-    },
-    {
-      "parameters": {
-        "url": "={{$env.CHATWOOT_BASE}}/api/v1/accounts/{{$env.CHATWOOT_ACCOUNT_ID}}/contacts/{{$json[\"payload\"][\"id\"]}}/conversations",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "api_access_token",
-              "value": "={{$env.CHATWOOT_API_TOKEN}}"
-            }
-          ]
+        "sheetName": {
+          "__rl": true,
+          "value": "Histórico Recepção",
+          "mode": "name",
+          "cachedResultName": "Histórico Recepção"
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telefone_limpo": "={{ $json.telefone_limpo }}",
+            "paciente_nome": "={{ $json.paciente_nome }}",
+            "historico_conversa": "={{ $json.historico_conversa }}",
+            "canal": "={{ $json.canal }}",
+            "remoteJid": "={{ $json.remoteJid }}",
+            "estado_conversa": "={{ $json.estado_conversa }}",
+            "campanha_ativa": "={{ $json.campanha_ativa }}",
+            "bloco_produto": "={{ $json.bloco_produto }}"
+          },
+          "matchingColumns": [
+            "telefone_limpo"
+          ],
+          "schema": [
             {
-              "name": "inbox_id",
-              "value": "={{$env.CHATWOOT_SEFAS_INBOX_ID}}"
+              "id": "telefone_limpo",
+              "displayName": "telefone_limpo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             },
             {
-              "name": "additional_attributes",
-              "value": "={\"origem\": \"{{$node[\"Buscar Próximo Lead\"].json[\"origem\"]}}\", \"plano_interesse\": \"a_confirmar\", \"campanha\": \"sefas-outbound-piloto\"}"
-            }
-          ]
-        }
-      },
-      "name": "Criar Conversa Chatwoot",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1340, 480],
-      "id": "node-cw-conv"
-    },
-    {
-      "parameters": {
-        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+              "id": "paciente_nome",
+              "displayName": "paciente_nome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             },
             {
-              "name": "text",
-              "value": "Perfeito! 🤝 Nossa equipe especializada vai entrar em contato com você em breve para apresentar todas as opções e tirar suas dúvidas.\n\nFique à vontade para perguntar qualquer coisa!"
-            }
-          ]
-        }
-      },
-      "name": "Mensagem Transição Handoff",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1560, 480],
-      "id": "node-handoff-msg"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE sefas_leads SET status = 'handoff', handoff_em = NOW() WHERE telefone = '={{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}'"
-      },
-      "name": "Marcar Handoff no DB",
-      "type": "n8n-nodes-base.postgres",
-      "position": [1780, 480],
-      "id": "node-mark-handoff"
-    },
-    {
-      "parameters": {
-        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+              "id": "historico_conversa",
+              "displayName": "historico_conversa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             },
             {
-              "name": "text",
-              "value": "Entendido, sem problema! 😊 Caso mude de ideia ou queira saber mais no futuro, pode contar conosco.\n\nTenha um ótimo dia!"
-            }
-          ]
-        }
-      },
-      "name": "Encerrar Recusa",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [900, 680],
-      "id": "node-recusa"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE sefas_leads SET status = 'recusa', respondeu_em = NOW() WHERE telefone = '={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"].replace(\"@s.whatsapp.net\",\"\").replace(\"55\",\"\")}}'"
-      },
-      "name": "Marcar Recusa no DB",
-      "type": "n8n-nodes-base.postgres",
-      "position": [1120, 680],
-      "id": "node-mark-recusa"
-    },
-    {
-      "parameters": {
-        "amount": 48,
-        "unit": "hours"
-      },
-      "name": "Aguardar 48h Follow-up",
-      "type": "n8n-nodes-base.wait",
-      "position": [900, 840],
-      "id": "node-wait-48h"
-    },
-    {
-      "parameters": {
-        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+              "id": "historico_inbound",
+              "displayName": "historico_inbound",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
-              "name": "text",
-              "value": "Oi! Passei só pra checar se recebeu nossa mensagem sobre a assistência familiar. 😊 Caso tenha alguma dúvida, estou aqui!"
+              "id": "historico_outbound",
+              "displayName": "historico_outbound",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "respondeu",
+              "displayName": "respondeu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "data_resposta",
+              "displayName": "data_resposta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mariana_assumiu",
+              "displayName": "mariana_assumiu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ultima_mensagem",
+              "displayName": "ultima_mensagem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ultima_interacao_ts",
+              "displayName": "ultima_interacao_ts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ultimo_numero_origem",
+              "displayName": "ultimo_numero_origem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "canal",
+              "displayName": "canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "responsavel",
+              "displayName": "responsavel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "contexto_ativo",
+              "displayName": "contexto_ativo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "origem_demanda",
+              "displayName": "origem_demanda",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "chave_demanda",
+              "displayName": "chave_demanda",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status_conversa",
+              "displayName": "status_conversa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "flag_teste",
+              "displayName": "flag_teste",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "cpf",
+              "displayName": "cpf",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paciente_id_quark",
+              "displayName": "paciente_id_quark",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "remoteJid",
+              "displayName": "remoteJid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "remoteJidAlt",
+              "displayName": "remoteJidAlt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "senderPn",
+              "displayName": "senderPn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "participantPn",
+              "displayName": "participantPn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "fonte_resolucao_inbound",
+              "displayName": "fonte_resolucao_inbound",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "confidence_resolucao",
+              "displayName": "confidence_resolucao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "campanha_ativa",
+              "displayName": "campanha_ativa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "variacao_mensagem",
+              "displayName": "variacao_mensagem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intencao",
+              "displayName": "intencao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "estado",
+              "displayName": "estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status_lead",
+              "displayName": "status_lead",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "flag_humano",
+              "displayName": "flag_humano",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "motivo",
+              "displayName": "motivo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "agendar",
+              "displayName": "agendar",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "handoff",
+              "displayName": "handoff",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "especialidade",
+              "displayName": "especialidade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "medico",
+              "displayName": "medico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data_agendamento",
+              "displayName": "data_agendamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hora_agendamento",
+              "displayName": "hora_agendamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "json_valido",
+              "displayName": "json_valido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "erro_json",
+              "displayName": "erro_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bloco_produto",
+              "displayName": "bloco_produto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             }
-          ]
-        }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
-      "name": "Follow-up Único",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1120, 840],
-      "id": "node-followup"
+      "id": "dermato-write-hist-recepcao",
+      "name": "Gravar Histórico Recepção (SEFAS)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4416,
+        -784
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "DwGMSdvy5y4ZKSvU",
+          "name": "Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE sefas_leads SET status = 'sem_resposta', respondeu_em = NOW() WHERE id = {{$node[\"Buscar Próximo Lead\"].json[\"id\"]}}"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.key ? $json.key.id : '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "id": "envio-real-key-id-not-empty"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "name": "Marcar Sem Resposta",
-      "type": "n8n-nodes-base.postgres",
-      "position": [1340, 840],
-      "id": "node-no-reply"
+      "id": "dermato-gate-envio-real",
+      "name": "Envio Teve Resposta Real da API?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4030,
+        -1160
+      ]
     }
   ],
   "connections": {
-    "Buscar Próximo Lead": { "main": [[{ "node": "Tem Lead?", "type": "main", "index": 0 }]] },
-    "Tem Lead?": {
+    "Trigger SEFAS 30min": {
       "main": [
-        [{ "node": "Já Abordado?", "type": "main", "index": 0 }],
+        [
+          {
+            "node": "Bloqueio Horário Envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bloqueio Horário Envio": {
+      "main": [
+        [
+          {
+            "node": "Buscar Próximo Lead SEFAS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Próximo Lead SEFAS": {
+      "main": [
+        [
+          {
+            "node": "Tem Lead Pendente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Lead Pendente?": {
+      "main": [
+        [
+          {
+            "node": "Ler Histórico Outbound (Teto Diário)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Histórico Outbound (Teto Diário)": {
+      "main": [
+        [
+          {
+            "node": "Contar Envios Hoje (Teto 50)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contar Envios Hoje (Teto 50)": {
+      "main": [
+        [
+          {
+            "node": "Teto Diário Atingido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teto Diário Atingido?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Intervalo entre envios (Anti-ban)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intervalo entre envios (Anti-ban)": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mensagem SEFAS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Mensagem SEFAS": {
+      "main": [
+        [
+          {
+            "node": "Envio Teve Resposta Real da API?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Registro Histórico SEFAS": {
+      "main": [
+        [
+          {
+            "node": "Registrar Outbound no Histórico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar Outbound no Histórico": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status para Enviado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Histórico Recepção (SEFAS)": {
+      "main": [
+        [
+          {
+            "node": "Mesclar Histórico Recepção (SEFAS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mesclar Histórico Recepção (SEFAS)": {
+      "main": [
+        [
+          {
+            "node": "Gravar Histórico Recepção (SEFAS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envio Teve Resposta Real da API?": {
+      "main": [
+        [
+          {
+            "node": "Preparar Registro Histórico SEFAS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar Histórico Recepção (SEFAS)",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
       ]
-    },
-    "Já Abordado?": { "main": [[{ "node": "Novo Lead?", "type": "main", "index": 0 }]] },
-    "Novo Lead?": {
-      "main": [
-        [{ "node": "Rate Limiter 90s", "type": "main", "index": 0 }],
-        []
-      ]
-    },
-    "Rate Limiter 90s": { "main": [[{ "node": "Enviar Abordagem", "type": "main", "index": 0 }]] },
-    "Enviar Abordagem": { "main": [[{ "node": "Marcar Enviado", "type": "main", "index": 0 }]] },
-    "Webhook Resposta Inbound": { "main": [[{ "node": "Classificar Resposta", "type": "main", "index": 0 }]] },
-    "Classificar Resposta": { "main": [[{ "node": "Roteador", "type": "main", "index": 0 }]] },
-    "Roteador": {
-      "main": [
-        [{ "node": "Qualificar Lead", "type": "main", "index": 0 }],
-        [{ "node": "Encerrar Recusa", "type": "main", "index": 0 }],
-        [{ "node": "Aguardar 48h Follow-up", "type": "main", "index": 0 }],
-        [{ "node": "Qualificar Lead", "type": "main", "index": 0 }]
-      ]
-    },
-    "Qualificar Lead": { "main": [[{ "node": "Criar Contato Chatwoot", "type": "main", "index": 0 }]] },
-    "Criar Contato Chatwoot": { "main": [[{ "node": "Criar Conversa Chatwoot", "type": "main", "index": 0 }]] },
-    "Criar Conversa Chatwoot": { "main": [[{ "node": "Mensagem Transição Handoff", "type": "main", "index": 0 }]] },
-    "Mensagem Transição Handoff": { "main": [[{ "node": "Marcar Handoff no DB", "type": "main", "index": 0 }]] },
-    "Encerrar Recusa": { "main": [[{ "node": "Marcar Recusa no DB", "type": "main", "index": 0 }]] },
-    "Aguardar 48h Follow-up": { "main": [[{ "node": "Follow-up Único", "type": "main", "index": 0 }]] },
-    "Follow-up Único": { "main": [[{ "node": "Marcar Sem Resposta", "type": "main", "index": 0 }]] }
+    }
   },
+  "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "tags": ["sefas", "outbound", "b2b"],
-  "_meta": {
-    "instanceId": "SEFAS-Assistencial",
-    "notas": [
-      "EVOLUTION_API_KEY: definir no .env do VPS",
-      "CHATWOOT_SEFAS_INBOX_ID: ID da inbox criada no Chatwoot para SEFAS",
-      "Tabela sefas_leads: criar com migration em scripts/sefas_db_migration.sql",
-      "Q10 pendente: ajustar texto do follow-up após confirmação com Letícia",
-      "Rate limit: 90s entre envios. Aumentar para 120s se houver warnings de ban"
-    ]
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Campanha outbound SEFAS Assistencial. Baseado em Dermato 2026. Aguarda instância SEFAS-Assistencial ativa."
   }
 }
