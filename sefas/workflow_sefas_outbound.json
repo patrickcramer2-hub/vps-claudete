@@ -1,0 +1,408 @@
+{
+  "name": "SEFAS Outbound Campanha",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, nome, telefone, origem FROM sefas_leads WHERE status = 'pendente' AND DATE(criado_em) = CURRENT_DATE LIMIT 1"
+      },
+      "name": "Buscar Próximo Lead",
+      "type": "n8n-nodes-base.postgres",
+      "position": [240, 300],
+      "id": "node-fetch-lead"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"id\"]}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Tem Lead?",
+      "type": "n8n-nodes-base.if",
+      "position": [460, 300],
+      "id": "node-check-lead"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total FROM sefas_leads WHERE status IN ('enviado','respondeu','handoff','recusa') AND telefone = '={{$json[\"telefone\"]}}' AND criado_em > NOW() - INTERVAL '30 days'"
+      },
+      "name": "Já Abordado?",
+      "type": "n8n-nodes-base.postgres",
+      "position": [680, 220],
+      "id": "node-check-dup"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"total\"]}}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "name": "Novo Lead?",
+      "type": "n8n-nodes-base.if",
+      "position": [900, 220],
+      "id": "node-check-new"
+    },
+    {
+      "parameters": {
+        "amount": 90,
+        "unit": "seconds"
+      },
+      "name": "Rate Limiter 90s",
+      "type": "n8n-nodes-base.wait",
+      "position": [1120, 140],
+      "id": "node-rate-limit"
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "=55{{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "=Olá, {{$node[\"Buscar Próximo Lead\"].json[\"nome\"]}}! 👋\n\nSou da equipe da CCN (Centro Clínico Niterói) e quero compartilhar algo que pode ser muito útil para você e sua família.\n\nEstamos apresentando aos nossos pacientes uma *assistência familiar* com telemedicina, benefícios para o dia a dia e proteção para situações inesperadas. Os planos começam em R$ 59 por mês.\n\nGostaria de saber mais? 😊"
+            }
+          ]
+        }
+      },
+      "name": "Enviar Abordagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 140],
+      "id": "node-send-msg"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sefas_leads SET status = 'enviado', enviado_em = NOW() WHERE id = {{$node[\"Buscar Próximo Lead\"].json[\"id\"]}}"
+      },
+      "name": "Marcar Enviado",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1560, 140],
+      "id": "node-mark-sent"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sefas-resposta",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Resposta Inbound",
+      "type": "n8n-nodes-base.webhook",
+      "position": [240, 600],
+      "id": "node-webhook-in"
+    },
+    {
+      "parameters": {
+        "jsCode": "const texto = ($input.item.json.body?.message?.conversation || '').toLowerCase().trim();\nconst palavrasInteresse = ['sim','quero','gostei','interessante','saber mais','quanto custa','me conta','me interessa','quero saber','qual o plano','valor'];\nconst palavrasRecusa = ['nao','não','obrigado','obrigada','sem interesse','dispenso','cancelar','remover','sair','pare','parar'];\nlet classificacao = 'duvida';\nif(palavrasInteresse.some(p => texto.includes(p))) classificacao = 'interesse';\nif(palavrasRecusa.some(p => texto.includes(p))) classificacao = 'recusa';\nif(!texto || texto.length < 2) classificacao = 'silencio';\nreturn [{ json: { ...($input.item.json), classificacao } }];"
+      },
+      "name": "Classificar Resposta",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 600],
+      "id": "node-classify"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "value2": "interesse",
+              "outputKey": "interesse"
+            },
+            {
+              "value2": "recusa",
+              "outputKey": "recusa"
+            },
+            {
+              "value2": "silencio",
+              "outputKey": "silencio"
+            }
+          ]
+        },
+        "fallbackOutput": "duvida"
+      },
+      "name": "Roteador",
+      "type": "n8n-nodes-base.switch",
+      "position": [680, 600],
+      "id": "node-router"
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "Que ótimo! 😊 Para te apresentar o plano mais adequado, me conta rapidinho:\n\n1️⃣ O plano seria só para você ou vai incluir dependentes (cônjuge/filhos)?\n2️⃣ Qual a sua faixa de idade aproximada?"
+            }
+          ]
+        }
+      },
+      "name": "Qualificar Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 480],
+      "id": "node-qualify"
+    },
+    {
+      "parameters": {
+        "url": "={{$env.CHATWOOT_BASE}}/api/v1/accounts/{{$env.CHATWOOT_ACCOUNT_ID}}/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{$env.CHATWOOT_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{$node[\"Buscar Próximo Lead\"].json[\"nome\"]}}"
+            },
+            {
+              "name": "phone_number",
+              "value": "=+55{{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}"
+            }
+          ]
+        }
+      },
+      "name": "Criar Contato Chatwoot",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1120, 480],
+      "id": "node-cw-contact"
+    },
+    {
+      "parameters": {
+        "url": "={{$env.CHATWOOT_BASE}}/api/v1/accounts/{{$env.CHATWOOT_ACCOUNT_ID}}/contacts/{{$json[\"payload\"][\"id\"]}}/conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{$env.CHATWOOT_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "inbox_id",
+              "value": "={{$env.CHATWOOT_SEFAS_INBOX_ID}}"
+            },
+            {
+              "name": "additional_attributes",
+              "value": "={\"origem\": \"{{$node[\"Buscar Próximo Lead\"].json[\"origem\"]}}\", \"plano_interesse\": \"a_confirmar\", \"campanha\": \"sefas-outbound-piloto\"}"
+            }
+          ]
+        }
+      },
+      "name": "Criar Conversa Chatwoot",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 480],
+      "id": "node-cw-conv"
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "Perfeito! 🤝 Nossa equipe especializada vai entrar em contato com você em breve para apresentar todas as opções e tirar suas dúvidas.\n\nFique à vontade para perguntar qualquer coisa!"
+            }
+          ]
+        }
+      },
+      "name": "Mensagem Transição Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1560, 480],
+      "id": "node-handoff-msg"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sefas_leads SET status = 'handoff', handoff_em = NOW() WHERE telefone = '={{$node[\"Buscar Próximo Lead\"].json[\"telefone\"]}}'"
+      },
+      "name": "Marcar Handoff no DB",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1780, 480],
+      "id": "node-mark-handoff"
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "Entendido, sem problema! 😊 Caso mude de ideia ou queira saber mais no futuro, pode contar conosco.\n\nTenha um ótimo dia!"
+            }
+          ]
+        }
+      },
+      "name": "Encerrar Recusa",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 680],
+      "id": "node-recusa"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sefas_leads SET status = 'recusa', respondeu_em = NOW() WHERE telefone = '={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"].replace(\"@s.whatsapp.net\",\"\").replace(\"55\",\"\")}}'"
+      },
+      "name": "Marcar Recusa no DB",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1120, 680],
+      "id": "node-mark-recusa"
+    },
+    {
+      "parameters": {
+        "amount": 48,
+        "unit": "hours"
+      },
+      "name": "Aguardar 48h Follow-up",
+      "type": "n8n-nodes-base.wait",
+      "position": [900, 840],
+      "id": "node-wait-48h"
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:8080/message/sendText/SEFAS-Assistencial",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$json[\"body\"][\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "Oi! Passei só pra checar se recebeu nossa mensagem sobre a assistência familiar. 😊 Caso tenha alguma dúvida, estou aqui!"
+            }
+          ]
+        }
+      },
+      "name": "Follow-up Único",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1120, 840],
+      "id": "node-followup"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sefas_leads SET status = 'sem_resposta', respondeu_em = NOW() WHERE id = {{$node[\"Buscar Próximo Lead\"].json[\"id\"]}}"
+      },
+      "name": "Marcar Sem Resposta",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1340, 840],
+      "id": "node-no-reply"
+    }
+  ],
+  "connections": {
+    "Buscar Próximo Lead": { "main": [[{ "node": "Tem Lead?", "type": "main", "index": 0 }]] },
+    "Tem Lead?": {
+      "main": [
+        [{ "node": "Já Abordado?", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Já Abordado?": { "main": [[{ "node": "Novo Lead?", "type": "main", "index": 0 }]] },
+    "Novo Lead?": {
+      "main": [
+        [{ "node": "Rate Limiter 90s", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Rate Limiter 90s": { "main": [[{ "node": "Enviar Abordagem", "type": "main", "index": 0 }]] },
+    "Enviar Abordagem": { "main": [[{ "node": "Marcar Enviado", "type": "main", "index": 0 }]] },
+    "Webhook Resposta Inbound": { "main": [[{ "node": "Classificar Resposta", "type": "main", "index": 0 }]] },
+    "Classificar Resposta": { "main": [[{ "node": "Roteador", "type": "main", "index": 0 }]] },
+    "Roteador": {
+      "main": [
+        [{ "node": "Qualificar Lead", "type": "main", "index": 0 }],
+        [{ "node": "Encerrar Recusa", "type": "main", "index": 0 }],
+        [{ "node": "Aguardar 48h Follow-up", "type": "main", "index": 0 }],
+        [{ "node": "Qualificar Lead", "type": "main", "index": 0 }]
+      ]
+    },
+    "Qualificar Lead": { "main": [[{ "node": "Criar Contato Chatwoot", "type": "main", "index": 0 }]] },
+    "Criar Contato Chatwoot": { "main": [[{ "node": "Criar Conversa Chatwoot", "type": "main", "index": 0 }]] },
+    "Criar Conversa Chatwoot": { "main": [[{ "node": "Mensagem Transição Handoff", "type": "main", "index": 0 }]] },
+    "Mensagem Transição Handoff": { "main": [[{ "node": "Marcar Handoff no DB", "type": "main", "index": 0 }]] },
+    "Encerrar Recusa": { "main": [[{ "node": "Marcar Recusa no DB", "type": "main", "index": 0 }]] },
+    "Aguardar 48h Follow-up": { "main": [[{ "node": "Follow-up Único", "type": "main", "index": 0 }]] },
+    "Follow-up Único": { "main": [[{ "node": "Marcar Sem Resposta", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["sefas", "outbound", "b2b"],
+  "_meta": {
+    "instanceId": "SEFAS-Assistencial",
+    "notas": [
+      "EVOLUTION_API_KEY: definir no .env do VPS",
+      "CHATWOOT_SEFAS_INBOX_ID: ID da inbox criada no Chatwoot para SEFAS",
+      "Tabela sefas_leads: criar com migration em scripts/sefas_db_migration.sql",
+      "Q10 pendente: ajustar texto do follow-up após confirmação com Letícia",
+      "Rate limit: 90s entre envios. Aumentar para 120s se houver warnings de ban"
+    ]
+  }
+}

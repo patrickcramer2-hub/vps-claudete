@@ -37,7 +37,7 @@ TICKET_MEDIO_FALLBACK = int(os.environ.get("TICKET_MEDIO_FALLBACK", "322"))
 
 # ── Evolution (instâncias WhatsApp) ──
 # Separadas por vírgula: EVOLUTION_INSTANCES=Inst1,Inst2
-EVOLUTION_INSTANCES = [n.strip() for n in os.environ.get("EVOLUTION_INSTANCES", "Claudete-recep,claudete2").split(",")]
+EVOLUTION_INSTANCES = [n.strip() for n in os.environ.get("EVOLUTION_INSTANCES", "Claudete-recep,claudete2,SEFAS-Assistencial").split(",")]
 _EVO_IN_SQL = "('" + "','".join(EVOLUTION_INSTANCES) + "')"
 
 # ── Time / usuários Quark ──
