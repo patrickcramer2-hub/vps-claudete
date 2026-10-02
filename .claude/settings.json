@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(tailscale *)",
+      "Bash(tailscaled *)"
+    ]
+  }
+}
