@@ -3744,5 +3744,20 @@ def ccn_handoffs():
     return send_from_directory(".", "handoffs.html")
 
 
+@app.route("/admin")
+def admin():
+    return jsonify({
+        "modulo": "Admin",
+        "status": "stub — painel em construção",
+        "endpoints_disponiveis": [
+            "GET  /admin",
+            "GET  /api/sefas/metrics",
+            "GET  /api/sefas/leads",
+            "POST /api/sefas/leads/import",
+            "POST /api/sefas/sheets/sync",
+        ],
+    })
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
