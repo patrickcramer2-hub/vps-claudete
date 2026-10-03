@@ -3373,7 +3373,7 @@ def api_cache_invalidar():
 #              plano_indicado, origem, campaign_id
 #    - status: pendente|enviado|respondeu|interesse|duvida|recusa|handoff|sem_resposta|fechado
 #
-# 2. Google Sheets (tab SEFAS_OUTBOUND, planilha 11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw):
+# 2. Google Sheets (tab SEFAS_OUTBOUND, planilha 1gZ8I6RIzYadKodo7qv6Efk2jV2viUXAVfUXXNkdPthM):
 #    - espelho operacional lido pelo n8n para controle de envios
 #    - colunas: Status, Ação Envio, Variação, Primeiro Nome, Telefone,
 #               Origem, Plano Indicado, Data Envio, remoteJid
@@ -3623,7 +3623,7 @@ def api_sefas_lead_update(lead_id):
 
 # ── Google Sheets sync ────────────────────────────────────────────────────
 _SEFAS_SHEET_ID  = os.environ.get("SEFAS_SPREADSHEET_ID",
-                                   "11jba-gDTFNhDowz4XlDb5rkJEQNy6bJqNKyUMH-iQVw")
+                                   "1gZ8I6RIzYadKodo7qv6Efk2jV2viUXAVfUXXNkdPthM")
 _SEFAS_SHEET_TAB = "SEFAS_OUTBOUND"
 _SHEETS_SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
 _SHEET_HEADER    = ["Status", "Ação Envio", "Variação", "Primeiro Nome",
