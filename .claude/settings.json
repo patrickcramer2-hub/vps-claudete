@@ -1,7 +1,12 @@
-git clone https://github.com/patrickcramer2-hub/vps-claudete.git /tmp/vps-repo \
-  -b claude/intelligent-curie-ri5741 --depth=1 \
-  && cp /tmp/vps-repo/dashboard/app.py /docker/claudete-dashboard/ \
-  && cp -r /tmp/vps-repo/dashboard/static/ /docker/claudete-dashboard/ \
-  && docker restart claudete-dashboard \
-  && rm -rf /tmp/vps-repo \
-  && echo "✅ Deploy concluído"
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(tailscale *)",
+      "Bash(tailscaled *)"
+      "Bash(tailscaled *)",
+      "Bash(curl *)"
+    ]
+  }
+}
